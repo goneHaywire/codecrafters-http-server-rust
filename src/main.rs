@@ -36,6 +36,26 @@ fn main() {
                                 .as_bytes(),
                             )
                             .unwrap();
+                    } else if request.path.contains("/user-agent") {
+                        let user_agent = request
+                            .headers
+                            .iter()
+                            .find(|&header| header.contains("User-Agent"))
+                            .map(|s| s.split(":").last().unwrap().trim())
+                            .unwrap();
+
+                        stream
+                            .write(
+                                format!(
+                                    "HTTP/1.1 {} {}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+                                    StatusCode::Ok as usize,
+                                    StatusCode::Ok,
+                                    user_agent.len(),
+                                    user_agent
+                                )
+                                .as_bytes(),
+                            )
+                            .unwrap();
                     } else if request.path == "/" {
                         stream
                             .write(
