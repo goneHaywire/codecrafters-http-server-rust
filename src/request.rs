@@ -17,7 +17,7 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn new(mut stream: &mut TcpStream) -> Self {
+    pub fn build(mut stream: &mut TcpStream) -> Self {
         let reader = BufReader::new(&mut stream);
         let request: Vec<String> = reader
             .lines()
