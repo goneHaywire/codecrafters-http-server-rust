@@ -1,7 +1,7 @@
 use clap::Parser;
 use std::{
     fs,
-    io::Result as IOResult,
+    io::{Result as IOResult, Write},
     net::{TcpListener, TcpStream},
     path::PathBuf,
     thread,
@@ -28,7 +28,6 @@ fn handle_stream(mut stream: TcpStream) -> IOResult<usize> {
     let args = Cli::parse();
 
     let request = Request::build(&mut stream);
-    println!("{:?}", request);
 
     match request.method {
         Method::GET => {
@@ -73,7 +72,18 @@ fn handle_stream(mut stream: TcpStream) -> IOResult<usize> {
         }
         Method::POST => {
             if request.path.contains("/files") {
-                todo!("implement files for POST")
+                (if let Some(dir) = args.directory {
+                    let fname = request.path.split("/").last().unwrap();
+                    let path: PathBuf = [dir, fname.into()].iter().collect();
+                    let mut file = fs::File::create(path).unwrap();
+
+                    file.write_all(request.body.as_bytes()).unwrap();
+
+                    Response::new(StatusCode::Created, Body::Empty)
+                } else {
+                    Response::new(StatusCode::NotFound, Body::Empty)
+                })
+                .send(stream)
             } else {
                 Response::new(StatusCode::Ok, Body::Empty).send(stream)
             }

@@ -8,6 +8,7 @@ use std::{
 pub enum StatusCode {
     Ok = 200,
     NotFound = 404,
+    Created = 201,
 }
 
 impl Display for StatusCode {
@@ -18,6 +19,7 @@ impl Display for StatusCode {
             match &self {
                 Self::Ok => "OK",
                 Self::NotFound => "NOT FOUND",
+                Self::Created => "CREATED",
             }
         )
     }
