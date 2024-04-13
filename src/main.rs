@@ -1,19 +1,31 @@
+use clap::Parser;
 use std::{
+    fs,
     io::Result as IOResult,
     net::{TcpListener, TcpStream},
+    path::PathBuf,
     thread,
 };
 
 use crate::{
     request::{Method, Request},
-    response::{Response, StatusCode},
+    response::{Body, Response, StatusCode},
 };
 
 mod request;
 mod response;
 
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Cli {
+    #[arg(short, long)]
+    directory: Option<String>,
+}
+
 fn handle_stream(mut stream: TcpStream) -> IOResult<usize> {
     println!("accepted new connection");
+
+    let args = Cli::parse();
 
     let request = Request::build(&mut stream);
     println!("{:?}", request);
@@ -23,7 +35,7 @@ fn handle_stream(mut stream: TcpStream) -> IOResult<usize> {
             if request.path.contains("/echo") {
                 let text = &request.path[6..];
 
-                Response::build(StatusCode::Ok, text.to_owned()).send(stream)
+                Response::new(StatusCode::Ok, Body::String(text.to_owned())).send(stream)
             } else if request.path.contains("/user-agent") {
                 let user_agent = request
                     .headers
@@ -32,15 +44,39 @@ fn handle_stream(mut stream: TcpStream) -> IOResult<usize> {
                     .map(|s| s.split(":").last().unwrap().trim())
                     .unwrap();
 
-                Response::build(StatusCode::Ok, user_agent.into()).send(stream)
+                Response::new(StatusCode::Ok, Body::String(user_agent.into())).send(stream)
+            } else if request.path.contains("/files") {
+                (if let Some(dir) = args.directory {
+                    let fname = request.path.split("/").last().unwrap();
+                    let path: PathBuf = [dir, fname.into()].iter().collect();
+                    let metadata = fs::metadata(&path);
+
+                    match metadata {
+                        Ok(metadata) => match metadata.is_file() {
+                            true => {
+                                let file = fs::read_to_string(&path).unwrap();
+                                Response::new(StatusCode::Ok, Body::File(file))
+                            }
+                            false => Response::new(StatusCode::NotFound, Body::Empty),
+                        },
+                        Err(_) => Response::new(StatusCode::NotFound, Body::Empty),
+                    }
+                } else {
+                    Response::new(StatusCode::NotFound, Body::Empty)
+                })
+                .send(stream)
             } else if request.path == "/" {
-                Response::build(StatusCode::Ok, "".into()).send(stream)
+                Response::new(StatusCode::Ok, Body::Empty).send(stream)
             } else {
-                Response::build(StatusCode::NotFound, "".into()).send(stream)
+                Response::new(StatusCode::NotFound, Body::Empty).send(stream)
             }
         }
         Method::POST => {
-            todo!("implement post")
+            if request.path.contains("/files") {
+                todo!("implement files for POST")
+            } else {
+                Response::new(StatusCode::Ok, Body::Empty).send(stream)
+            }
         }
     }
 }

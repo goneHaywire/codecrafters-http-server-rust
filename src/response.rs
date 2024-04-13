@@ -24,13 +24,46 @@ impl Display for StatusCode {
 }
 
 #[derive(Debug)]
+pub enum Body {
+    String(String),
+    File(String),
+    Empty,
+}
+
+impl Body {
+    fn len(&self) -> usize {
+        match self {
+            Self::Empty => 0,
+            Self::String(content) => content.len(),
+            Self::File(content) => content.len(),
+        }
+    }
+
+    fn content(&self) -> String {
+        match self {
+            Self::Empty => "".into(),
+            Self::File(content) => content.into(),
+            Self::String(content) => content.into(),
+        }
+    }
+
+    fn content_type<'a>(&self) -> &'a str {
+        match self {
+            Self::Empty => "text/plain",
+            Self::File(_) => "application/octet-stream",
+            Self::String(_) => "text/plain",
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct Response {
     pub status: StatusCode,
-    pub body: String,
+    pub body: Body,
 }
 
 impl Response {
-    pub fn build(status: StatusCode, body: String) -> Self {
+    pub fn new(status: StatusCode, body: Body) -> Self {
         Response { status, body }
     }
 
@@ -43,11 +76,12 @@ impl Display for Response {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "HTTP/1.1 {} {}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+            "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n{}",
             self.status as usize,
             self.status,
+            self.body.content_type(),
             self.body.len(),
-            self.body
+            self.body.content()
         )
     }
 }

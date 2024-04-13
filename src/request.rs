@@ -19,31 +19,25 @@ pub struct Request {
 impl Request {
     pub fn build(mut stream: &mut TcpStream) -> Self {
         let reader = BufReader::new(&mut stream);
-        let request: Vec<String> = reader
+        let mut request = reader
             .lines()
-            .map(|line| line.unwrap_or("".into()))
-            .take_while(|line| !line.is_empty())
-            .collect();
+            .take_while(|line| !line.as_ref().unwrap().is_empty())
+            .flatten();
 
-        let head: Vec<String> = request
-            .first()
-            .unwrap_or(&("".to_string()))
-            .split(" ")
-            .into_iter()
-            .map(|str| str.to_string())
-            .collect();
+        let head = request.next().unwrap_or("".to_string());
+        let head: Vec<&str> = head.split(" ").collect();
 
-        let method = match head.get(0).map(|x| &x[..]) {
-            Some("GET") => Method::GET,
-            Some("POST") => Method::POST,
+        let method = match head.get(0) {
+            Some(&"GET") => Method::GET,
+            Some(&"POST") => Method::POST,
             _ => panic!("invalid method"),
         };
-        let path = head.get(1).expect("no path found");
+        let path = *head.get(1).expect("no path found");
 
         Request {
             method,
             path: path.to_owned(),
-            headers: request.into_iter().skip(1).collect(),
+            headers: request.collect(),
         }
     }
 }
