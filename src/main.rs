@@ -30,7 +30,7 @@ fn handle_stream(mut stream: TcpStream) -> IOResult<usize> {
     let request = Request::build(&mut stream);
 
     match request.method {
-        Method::GET => {
+        Method::Get => {
             if request.path.contains("/echo") {
                 let text = &request.path[6..];
 
@@ -40,13 +40,13 @@ fn handle_stream(mut stream: TcpStream) -> IOResult<usize> {
                     .headers
                     .iter()
                     .find(|&header| header.contains("User-Agent"))
-                    .map(|s| s.split(":").last().unwrap().trim())
+                    .map(|s| s.split(':').last().unwrap().trim())
                     .unwrap();
 
                 Response::new(StatusCode::Ok, Body::String(user_agent.into())).send(stream)
             } else if request.path.contains("/files") {
                 (if let Some(dir) = args.directory {
-                    let fname = request.path.split("/").last().unwrap();
+                    let fname = request.path.split('/').last().unwrap();
                     let path: PathBuf = [dir, fname.into()].iter().collect();
                     let metadata = fs::metadata(&path);
 
@@ -70,10 +70,10 @@ fn handle_stream(mut stream: TcpStream) -> IOResult<usize> {
                 Response::new(StatusCode::NotFound, Body::Empty).send(stream)
             }
         }
-        Method::POST => {
+        Method::Post => {
             if request.path.contains("/files") {
                 (if let Some(dir) = args.directory {
-                    let fname = request.path.split("/").last().unwrap();
+                    let fname = request.path.split('/').last().unwrap();
                     let path: PathBuf = [dir, fname.into()].iter().collect();
                     let mut file = fs::File::create(path).unwrap();
 
@@ -96,9 +96,7 @@ fn main() {
 
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
 
-    for stream in listener.incoming() {
-        if let Ok(stream) = stream {
-            thread::spawn(move || handle_stream(stream));
-        }
+    for stream in listener.incoming().flatten() {
+        thread::spawn(move || handle_stream(stream));
     }
 }

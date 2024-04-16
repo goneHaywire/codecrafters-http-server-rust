@@ -5,8 +5,8 @@ use std::{
 
 #[derive(Debug)]
 pub enum Method {
-    GET,
-    POST,
+    Get,
+    Post,
 }
 
 #[derive(Debug)]
@@ -22,14 +22,14 @@ impl Request {
         let mut buffer = [0; 1024];
 
         let size = stream.read(&mut buffer).unwrap();
-        let mut request = buffer.take(size as u64).lines().flatten();
+        let mut request = buffer.take(size as u64).lines().map_while(Result::ok);
 
         let head = request.next().unwrap_or("".to_string());
-        let head: Vec<&str> = head.split(" ").collect();
+        let head: Vec<&str> = head.split(' ').collect();
 
-        let method = match head.get(0) {
-            Some(&"GET") => Method::GET,
-            Some(&"POST") => Method::POST,
+        let method = match head.first() {
+            Some(&"GET") => Method::Get,
+            Some(&"POST") => Method::Post,
             _ => panic!("invalid method"),
         };
         let path = *head.get(1).expect("no path found");
