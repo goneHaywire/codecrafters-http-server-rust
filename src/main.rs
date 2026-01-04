@@ -1,9 +1,11 @@
 use clap::Parser;
+use encoding::{Encoding, EncodingType};
 use std::{
     fs,
     io::{BufReader, Result as IOResult, Write},
     net::{TcpListener, TcpStream},
     path::PathBuf,
+    str::FromStr,
     thread,
 };
 
@@ -12,6 +14,7 @@ use crate::{
     response::{Body, Response, StatusCode},
 };
 
+mod encoding;
 mod request;
 mod response;
 
@@ -32,19 +35,36 @@ fn handle_stream(mut stream: TcpStream) -> IOResult<usize> {
     let mut request = Request::build(&mut reader).expect("failed to build request");
     request.read_body(&mut reader).expect("failed to read body");
 
-    match request.method {
-        Method::Get => {
-            if request.path.contains("/echo") {
-                let text = &request.path[6..];
+    let encodings = request
+        .get_header("Accept-Encoding")
+        .map(|encodings| encodings.split(", ").collect::<Vec<&str>>())
+        .unwrap_or_default()
+        .iter()
+        .flat_map(|s: &&str| EncodingType::from_str(s))
+        .collect::<Encoding>();
 
-                Ok(Response::new(StatusCode::Ok, Body::String(text.to_owned()))
-                    .send(&mut stream)?)
-            } else if request.path.contains("/user-agent") {
-                let user_agent = request.get_header("User-Agent").unwrap();
+    let mut response = Response::new();
 
-                Response::new(StatusCode::Ok, Body::String(user_agent.into())).send(&mut stream)
-            } else if request.path.contains("/files") {
-                (if let Some(dir) = args.directory {
+    response = response.set_encoding(encodings);
+
+    if request.path == "/" {
+        response = response.set_status(StatusCode::Ok).set_body(Body::Empty);
+    } else if request.path.contains("/echo") {
+        let text = &request.path[6..];
+
+        response = response
+            .set_status(StatusCode::Ok)
+            .set_body(Body::String(text.to_owned()));
+    } else if request.path.contains("/user-agent") {
+        let user_agent = request.get_header("User-Agent").unwrap();
+
+        response = response
+            .set_status(StatusCode::Ok)
+            .set_body(Body::String(user_agent.into()))
+    } else if request.path.contains("/files") {
+        match request.method {
+            Method::Get => {
+                if let Some(dir) = args.directory {
                     let fname = request.path.split('/').last().unwrap();
                     let path: PathBuf = [dir, fname.into()].iter().collect();
                     let metadata = fs::metadata(&path);
@@ -52,26 +72,30 @@ fn handle_stream(mut stream: TcpStream) -> IOResult<usize> {
                     match metadata {
                         Ok(metadata) => match metadata.is_file() {
                             true => {
-                                let file = fs::read_to_string(&path).unwrap();
-                                Response::new(StatusCode::Ok, Body::File(file))
+                                response = response
+                                    .set_status(StatusCode::Ok)
+                                    .set_body(Body::File(fs::read_to_string(&path).unwrap()));
                             }
-                            false => Response::new(StatusCode::NotFound, Body::Empty),
+                            false => {
+                                response = response
+                                    .set_status(StatusCode::NotFound)
+                                    .set_body(Body::Empty);
+                            }
                         },
-                        Err(_) => Response::new(StatusCode::NotFound, Body::Empty),
+                        Err(_) => {
+                            response = response
+                                .set_status(StatusCode::NotFound)
+                                .set_body(Body::Empty);
+                        }
                     }
                 } else {
-                    Response::new(StatusCode::NotFound, Body::Empty)
-                })
-                .send(&mut stream)
-            } else if request.path == "/" {
-                Response::new(StatusCode::Ok, Body::Empty).send(&mut stream)
-            } else {
-                Response::new(StatusCode::NotFound, Body::Empty).send(&mut stream)
+                    response = response
+                        .set_status(StatusCode::NotFound)
+                        .set_body(Body::Empty);
+                }
             }
-        }
-        Method::Post => {
-            if request.path.contains("/files") {
-                (if let Some(dir) = args.directory {
+            Method::Post => {
+                if let Some(dir) = args.directory {
                     let fname = request.path.split('/').last().unwrap();
                     let path: PathBuf = [dir, fname.into()].iter().collect();
                     let mut file = fs::File::create(path).unwrap();
@@ -79,16 +103,21 @@ fn handle_stream(mut stream: TcpStream) -> IOResult<usize> {
                     file.write_all(request.body.unwrap_or("".into()).as_bytes())
                         .unwrap();
 
-                    Response::new(StatusCode::Created, Body::Empty)
+                    response = response
+                        .set_status(StatusCode::Created)
+                        .set_body(Body::Empty);
                 } else {
-                    Response::new(StatusCode::NotFound, Body::Empty)
-                })
-                .send(&mut stream)
-            } else {
-                Response::new(StatusCode::Ok, Body::Empty).send(&mut stream)
+                    response = response
+                        .set_status(StatusCode::NotFound)
+                        .set_body(Body::Empty);
+                }
             }
-        }
-    }
+        };
+    } else {
+        response = response.set_status(StatusCode::NotFound);
+    };
+
+    response.send(&mut stream)
 }
 
 fn main() {
