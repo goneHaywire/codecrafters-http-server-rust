@@ -1,10 +1,12 @@
 use std::{
     fmt::Display,
-    io::{self, Write},
+    io::{self, Read, Write},
     net::TcpStream,
 };
 
-use crate::encoding::Encoding;
+use flate2::{Compression, read::GzEncoder};
+
+use crate::encoding::{Encoding, EncodingType};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub enum StatusCode {
@@ -30,8 +32,8 @@ impl Display for StatusCode {
 
 #[derive(Debug, Default)]
 pub enum Body {
-    String(String),
-    File(String),
+    String(Vec<u8>),
+    File(Vec<u8>),
     #[default]
     Empty,
 }
@@ -45,9 +47,9 @@ impl Body {
         }
     }
 
-    fn content(&self) -> &str {
+    fn content(&self) -> &[u8] {
         match self {
-            Self::Empty => "",
+            Self::Empty => b"",
             Self::File(content) => content,
             Self::String(content) => content,
         }
@@ -77,28 +79,6 @@ impl Response {
     }
 
     pub fn send(self, stream: &mut TcpStream) -> io::Result<usize> {
-        stream.write(self.to_string().as_bytes())
-    }
-
-    pub fn set_status(mut self, status: StatusCode) -> Self {
-        self.status = status;
-        self
-    }
-
-    pub fn set_body(mut self, body: Body) -> Self {
-        // handle encoding here in the future
-        self.body = body;
-        self
-    }
-
-    pub fn set_encoding(mut self, encoding: Encoding) -> Self {
-        self.encoding = encoding;
-        self
-    }
-}
-
-impl Display for Response {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let encoding_line = if !self.encoding.is_empty() {
             &format!(
                 "Content-Encoding: {}\r\n",
@@ -113,15 +93,56 @@ impl Display for Response {
             ""
         };
 
-        write!(
-            f,
-            "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n{}\r\n{}",
-            self.status as usize,
-            self.status,
-            self.body.content_type(),
-            self.body.len(),
-            encoding_line,
-            self.body.content()
-        )
+        let _ = stream.write(
+            format!(
+                "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n{}\r\n",
+                self.status as usize,
+                self.status,
+                self.body.content_type(),
+                self.body.len(),
+                encoding_line,
+            )
+            .as_bytes(),
+        )?;
+        stream.write(self.body.content())
+    }
+
+    pub fn set_status(mut self, status: StatusCode) -> Self {
+        self.status = status;
+        self
+    }
+
+    pub fn set_body(mut self, body: Body) -> Self {
+        if self.encoding.is_empty() {
+            self.body = body;
+            self
+        } else {
+            match self.encoding.first().unwrap() {
+                EncodingType::Gzip => {
+                    let mut encoded = vec![];
+                    self.body = match body {
+                        Body::String(contents) => {
+                            let mut e = GzEncoder::new(&contents[..], Compression::default());
+                            let _ = e.read_to_end(&mut encoded);
+
+                            Body::String(encoded)
+                        }
+                        Body::File(contents) => {
+                            let mut e = GzEncoder::new(&contents[..], Default::default());
+                            let _ = e.read_to_end(&mut encoded);
+
+                            Body::File(encoded)
+                        }
+                        Body::Empty => Body::Empty,
+                    };
+                }
+            }
+            self
+        }
+    }
+
+    pub fn set_encoding(mut self, encoding: Encoding) -> Self {
+        self.encoding = encoding;
+        self
     }
 }

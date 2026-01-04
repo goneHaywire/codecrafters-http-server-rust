@@ -54,7 +54,7 @@ fn handle_stream(mut stream: TcpStream) -> IOResult<usize> {
 
         response = response
             .set_status(StatusCode::Ok)
-            .set_body(Body::String(text.to_owned()));
+            .set_body(Body::String(text.into()));
     } else if request.path.contains("/user-agent") {
         let user_agent = request.get_header("User-Agent").unwrap();
 
@@ -72,9 +72,9 @@ fn handle_stream(mut stream: TcpStream) -> IOResult<usize> {
                     match metadata {
                         Ok(metadata) => match metadata.is_file() {
                             true => {
-                                response = response
-                                    .set_status(StatusCode::Ok)
-                                    .set_body(Body::File(fs::read_to_string(&path).unwrap()));
+                                response = response.set_status(StatusCode::Ok).set_body(
+                                    Body::File(fs::read_to_string(&path).unwrap().into()),
+                                );
                             }
                             false => {
                                 response = response
