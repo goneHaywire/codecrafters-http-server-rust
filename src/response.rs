@@ -19,7 +19,7 @@ impl Display for StatusCode {
             match &self {
                 Self::Ok => "OK",
                 Self::NotFound => "Not Found",
-                Self::Created => "CREATED",
+                Self::Created => "Created",
             }
         )
     }
